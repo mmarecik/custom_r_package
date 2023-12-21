@@ -1,0 +1,9 @@
+Package: DataFrame
+Type: Package
+Title: Package offers multiple ML preprocessing functions.  
+Version: 1.0
+Date: 2023-11-18
+Author: Wioleta Baj, Weronika Jedrusik, Magdalena Marecik
+Maintainer: Who to complain to <yourfault@somewhere.net>
+Description: Package implements several functions useful for dataset preprocessing. It improves such steps as datatypes conversion, EDA, train-test split, standarisation and many others.
+License: GNU 2
