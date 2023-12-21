@@ -1,0 +1,739 @@
+---
+title: "DataFrame"
+subtitle: "Custom R Package"
+author: "Magdalena Marecik"
+output: html_document
+mainfont: Times New Roman
+theme: 
+  rmarkdown::html_document:
+    toc: true
+    theme: cerulean 
+    fig_caption: yes
+---
+
+
+<style type="text/css">
+  body{
+  font-size: 13pt;
+  font-family: Times New Roman;
+}
+</style>
+
+```{css, echo=FALSE}
+h1, h2, h3, h4 {
+  text-align: center;
+}
+```
+
+</br></br>
+
+
+The goal of the project is to build a custom R package for preliminary data preprocessing. The DataFrame package includes the following functions:
+
+1) The generic function **DataFrame** - creates a DataFrame object based on the provided data.
+2) **astype** - converts the specified columns in a list to either numeric or factor type.
+3) **train_test_split** - divides the data frame into training and testing subsets with specified proportions. If the stratify argument is specified, the function performs the split while considering class proportions.
+4) **encoding** - implements two types of encoding for categorical variables: ordinal encoding and "one-hot" encoding.
+5) **generate_plot** - generates a distribution plot or box plot for a specified column in the data frame.
+6) **handle_missing_values** - implements various methods for handling missing values in the data.
+7) **custom_normalize** - performs normalization or standardization for numeric columns in the data frame.
+8) **summary** - calculates basic statistics for numeric and categorical variables.
+
+</br>
+
+## DataFrame
+
+</br>
+
+```{r}
+DataFrame <- function(df, row.names, col.names, ...) UseMethod("DataFrame")
+
+DataFrame <- function(df, row.names, col.names, ...) {
+  
+  stopifnot(is.data.frame(df))
+  # rename index
+  if(!missing(row.names)) {
+    rownames(df) <- row.names
+  }
+  # rename columns
+  if(!missing(col.names)) {
+    colnames(df) <- col.names
+  }
+  
+  class(df) <- list('DataFrame', 'data.frame')
+  return(df)
+}
+```
+
+</br>
+
+## astype
+
+</br>
+
+The astype.DataFrame function is used to change the data types of columns in a data frame. It allows the conversion of selected columns to numeric or categorical data types (factor).
+
+**Arguments**:
+
+- df: Ramka danych, na której będą dokonywane zmiany typów danych.
+- numeric.cols: Wektor nazw kolumn, które mają zostać skonwertowane na typ danych liczbowy (opcjonalny).
+- factor.cols: Wektor nazw kolumn, które mają zostać skonwertowane na typ danych kategoryczny (opcjonalny).
+
+**Details**:
+
+The function checks if the numeric.cols and factor.cols arguments are provided. If so, it proceeds to transform the respective columns in the data frame. For columns specified in numeric.cols, it changes their type to numeric, while for columns specified in factor.cols, it changes their type to factor.
+
+**Return**:
+
+The updated data frame after making changes in data types.
+
+```{r}
+astype.DataFrame <- function(df, numeric.cols, factor.cols) {
+  
+  if(!missing(numeric.cols)) {
+    # convert columns to numeric
+    for(ncol in numeric.cols) {
+      df[, ncol] <- as.numeric(df[, ncol])
+    }
+  }
+  # convert columns to factors
+  if(!missing(factor.cols)) {
+    for(fcol in factor.cols) {
+      df[, fcol] <- as.factor(df[, fcol])
+    }
+  }
+  return(df)
+}
+```
+
+</br>
+
+## summary
+
+</br>
+
+The summary function calculates summary statistics for both numeric and categorical columns in a data frame.
+
+**Arguments**:
+
+- df: The data frame for which summary statistics are calculated.
+
+**Details**
+
+For numeric columns, the following statistics are calculated:
+
+- Mean: Arithmetic mean.
+- Median: Median value, which is the middle value in an ordered dataset.
+- SD: Standard deviation, a measure of the spread of data around the mean.
+- Variance: Variance, a measure of the degree of data dispersion.
+- Min: Minimum value in the dataset.
+- Max: Maximum value in the dataset.
+- Range: Range, the difference between the maximum and minimum values.
+- Quantile_25: 25th percentile, the value below which 25% of the data lies (first quartile).
+- Quantile_75: 75th percentile, the value below which 75% of the data lies (third quartile).
+- Missing: Number of missing values in the data.
+
+For categorical columns, a frequency table is generated.
+
+**Return**:
+
+Returns a list containing summary statistics for numeric and categorical columns.
+
+```{r}
+summary.DataFrame <-
+function(df) {
+  
+  numeric_stats <- list()
+  categorical_stats <- list()
+  
+  for (col in names(df)) {
+    # Check if the column is numerical
+    if (is.numeric(df[[col]])) {
+      summary_stats <- c(
+        Mean = mean(df[[col]], na.rm = TRUE),
+        Median = median(df[[col]], na.rm = TRUE),
+        SD = sd(df[[col]], na.rm = TRUE),
+        Variance = var(df[[col]], na.rm = TRUE),
+        Min = min(df[[col]], na.rm = TRUE),
+        Max = max(df[[col]], na.rm = TRUE),
+        Range = diff(range(df[[col]], na.rm = TRUE)),
+        Quantile_25 = quantile(df[[col]], probs = 0.25, na.rm = TRUE),
+        Quantile_75 = quantile(df[[col]], probs = 0.75, na.rm = TRUE),
+        Missing = as.integer(sum(is.na(df[[col]])))
+      )
+      numeric_stats[[col]] <- summary_stats
+    } else {
+      # For categorical data, get frequency table
+      categorical_stats[[col]] <- table(df[[col]])
+    }
+  }
+  
+  # Formatting the results for numeric data
+  if (length(numeric_stats) > 0) {
+    #numeric_stats_df <- data.frame(t(sapply(numeric_stats, unlist)))
+    numeric_stats_df <- data.frame(do.call(rbind, numeric_stats))
+    colnames(numeric_stats_df) <- names(summary_stats)
+    #numeric_stats <- data.frame(numeric_stats)
+    
+    numeric_stats_df[,-ncol(numeric_stats_df)] <- round(numeric_stats_df[,-ncol(numeric_stats_df) ], 2)
+  } else {
+    numeric_stats_df <- NULL
+  }
+  
+  
+  list(
+    Numeric = numeric_stats_df,
+    Categorical = categorical_stats
+  )
+}
+```
+
+</br>
+
+## train_test_split
+
+</br>
+
+The train_test_split.DataFrame function is used to split a data frame into training and testing sets, with an option for stratification.
+
+**Arguments**:
+
+- df: The data frame to be split.
+- test.size: The percentage of data to be assigned to the test set (default is 0.3).
+- random.state: The random seed for result reproducibility (default is 47).
+- stratify: The name of the column used for stratification (optional).
+
+**Details**:
+
+Initially, the function sets the random seed for result reproducibility and checks if the specified test.size is within the appropriate range (0, 1). If the stratify argument is specified, it checks whether the given column is present in the data frame and if it is a categorical variable with more than one unique value. Data splitting into training and testing sets is performed using the caret::createDataPartition function. If stratify is not specified, random data splitting into training and testing sets is performed using the sample function.
+
+**Returns**:
+
+The function returns a list containing two elements: train (training set) and test (testing set).
+
+**Notes**:
+
+The function utilizes the caret package for stratified data splitting, so it may require its installation.
+
+```{r}
+train_test_split.DataFrame <- function(df, test.size = 0.3, random.state = 47, stratify){
+  
+  set.seed(random.state)
+  
+  stopifnot(test.size >= 0 || test.size <= 1)
+  train.size <- 1- test.size
+  
+  # stratified train test split
+  if(!missing(stratify)) {
+    # assert the column used for stratification is in dataframe
+    stopifnot(stratify %in% colnames(df))
+    # assert the column is categorical
+    stopifnot(is.factor(df[[stratify]]))
+    # assert the column takes more than 1 unique value
+    stopifnot(length(unique(df[[stratify]])) > 1)
+    
+    if (!requireNamespace("caret", quietly = TRUE))
+      install.packages("caret")
+    
+    indx <- caret::createDataPartition(df[, stratify], p = train.size, list = FALSE)
+    
+  } else { # not stratified train test split
+    indx <- sample(1:nrow(df), size = (train.size)*nrow(df))
+  }
+  train_data <- df[indx, ]
+  test_data <-  df[-indx, ]
+  return(list(train = train_data, test = test_data))
+}
+```
+
+</br>
+
+## encoding
+
+</br>
+
+Funkcja encoding.DataFrame służy do kodowania zmiennych kategorycznych w ramce danych. Oferuje dwa rodzaje kodowania: ordinal (liczbowe) i one-hot. Dodatkowo, umożliwia kontrolę nad zachowaniem kategorii przy one-hot encoding.
+
+**Argumenty**:
+
+- df: The data frame on which encoding operations will be performed.
+- col.names: The names of columns to be encoded (can be passed as a single name or a list of names).
+- type: The type of encoding - "ordinal" (default) or "one-hot".
+- drop: Controls whether one category will be dropped during one-hot encoding (optional, default is FALSE).
+
+**Details**:
+
+Its operation depends on the selected encoding type. For "ordinal," it converts categories to numbers for each column with the specified names. In the case of "one-hot," for each column with the specified names, it checks whether it is already a categorical variable and then performs one-hot encoding. The function handles both single and lists of columns to be encoded. For one-hot encoding, it is possible to drop one category to avoid multicollinearity (not removed by default).
+
+**Returns**:
+
+The updated data frame after encoding.
+
+```{r}
+encoding.DataFrame <- function(df, col.names, type = "ordinal", drop = FALSE) {
+  
+  if (!is.list(col.names)) {
+    stopifnot(is.character(col.names))
+    col.names <- c(col.names)
+  }
+  
+  # ordinal encoding
+  if (type=="ordinal") {
+    for(col in col.names) {
+      df[, col] <- as.numeric(factor(df[[col]], levels = unique(df[[col]]), exclude = NULL))
+    }
+  }
+  # one-hot encoding
+  else if (type=="one-hot") {
+    for(col in col.names) {
+      
+      if(!is.factor(df[[col]])) {
+        df[, col] <- as.factor(df[, col])
+      }
+      # encoding
+      encoded.df <- model.matrix(~0 + df[ , col])
+      encoded.df.colnames <- sprintf(paste(col, '.%s', sep = "") , unique(df[ , col]))
+      colnames(encoded.df) <- encoded.df.colnames
+      
+      col.pos <- match(col, colnames(df))
+      new.colnames <- append(colnames(df), colnames(encoded.df), col.pos)
+      new.colnames <- new.colnames[new.colnames != col]
+      
+      # concatenating data frames
+      if (col.pos == ncol(df)){
+        df <- cbind(df[,1:col.pos-1], encoded.df)
+      } else {
+        df <- cbind(df[,1:col.pos-1], cbind(encoded.df, df[,(col.pos+1):ncol(df)]))
+      }
+      colnames(df) <- new.colnames
+      df <- data.frame(df)
+      class(df) <- list('DataFrame', 'data.frame')
+      
+      # dropping one category
+      stopifnot(drop %in% c(FALSE, TRUE, "last", "first", "binary"))
+      if (drop == "last" || drop == TRUE ) {
+        df <- df[ , !names(df) %in% c(colnames(encoded.df)[ncol(encoded.df)])]
+      } else if (drop == "first") {
+        df <- df[ , !names(df) %in% c(colnames(encoded.df)[1])]
+      } else if (drop == "binary") {
+        if (ncol(encoded.df) == 2) {
+          df <- df[ , !names(df) %in% c(colnames(encoded.df)[2])]
+        }
+      }
+      
+    }
+  }
+  return(df)
+}
+```
+
+</br>
+
+## handle_missing_values
+
+</br>
+
+This function is used to handle missing data in a data frame, allowing various methods of replacement or removal.
+
+**Arguments**:
+
+- data: The data frame on which operations are to be performed.
+- method: The method for handling missing data, can take values: "drop" (remove rows with missing data), "zero" (replace missing data with zeros), "mean" (replace with the mean), "median" (replace with the median), "mode" (replace with the mode), "interpolate" (interpolate missing data using linear interpolation).
+- columns: Optional. The names of columns on which operations are to be applied. It can take a single column name or a list of names.
+
+**Details**:
+
+The function checks the correctness of arguments, including whether data is a data frame, whether method has a valid value, and whether columns are valid column names. If the columns argument is specified, missing data are addressed only in the selected columns. If the columns argument is not provided, the operation is performed on all columns. Then, depending on the chosen method, missing data are replaced with appropriate values or removed.
+
+**Returns**:
+
+The updated data frame after handling missing data.
+
+**Notes**:
+
+It uses the functions 'approx' and 'complete.cases'.
+
+```{r}
+handle_missing_values.DataFrame <- function(data, method = "drop", columns = NULL) {
+
+  # Check the validity of arguments
+  stopifnot(is.data.frame(data))
+  stopifnot(is.character(method) && method %in% c("drop", "zero", "mean", "median", "mode", "interpolate"))
+  stopifnot(is.null(columns) || (is.character(columns) && all(columns %in% names(data))))
+
+  # If columns is specified, filter the columns to those in the list
+  if (!is.null(columns)) {
+    modifieddata <- data[, columns, drop = FALSE]
+  } else {
+    modifieddata <- data
+  }
+
+  if (method == "drop") {
+    # Remove rows with missing values in selected columns
+    data <- data[complete.cases(modifieddata), ]
+  }
+
+  else {
+    # Apply the specified method to each selected column
+    for (col in names(modifieddata)) {
+
+      missingvalues <- sum(is.na(modifieddata[[col]]))
+
+      if (missingvalues > 0) {
+        if (method == "zero") {
+          data[[col]][is.na(data[[col]])] <- 0
+        } else if (method %in% c("mean", "median", "mode")) {
+          imputevalue <- switch(method,
+                                mean = mean(data[[col]], na.rm = TRUE),
+                                median = median(data[[col]], na.rm = TRUE),
+                                mode = {
+                                  # Create a frequency table, find the value with the highest frequency
+                                  tbl <- table(data[[col]], useNA = "ifany")
+                                  mode_value <- as.numeric(names(tbl)[which.max(tbl)])
+                                  # If NA is the most frequent value, use the second most frequent value
+                                  if (is.na(mode_value)) {
+                                    mode_value <- as.numeric(names(tbl)[which.max(tbl[-which.max(tbl)])])
+                                  }
+                                  mode_value
+                                })
+          data[[col]][is.na(data[[col]])] <- imputevalue
+        } else if (method == "interpolate") {
+          # Interpolate missing values in the column using linear interpolation
+          non_na_indices <- which(!is.na(data[[col]]))
+          x_interp <- seq_along(data[[col]])
+          interpolated_values <- approx(non_na_indices, data[[col]][non_na_indices], xout = x_interp)$y
+          data[[col]][is.na(data[[col]])] <- interpolated_values[is.na(data[[col]])]
+        }
+      }
+    }
+  }
+  return(data)
+}
+```
+
+</br>
+
+# custom_normalize
+
+</br>
+
+This function performs normalization or standardization of numerical columns in a data frame.
+
+**Arguments**
+
+- df: The data frame to be normalized.
+- method: The normalization method to apply. Defaults to "standardize". Possible values: "standardize", "min_max", "log_transform", "robust", "z_score", "box_cox".
+
+**Details**:
+
+This function separates numerical columns from non-numerical ones. Then it applies the chosen normalization method only to numerical columns. Supported normalization methods are:
+
+- "standardize": Standardization (centering and scaling) of numerical columns.
+- "min_max": Min-Max normalization of numerical columns.
+- "log_transform": Logarithmic transformation of numerical columns.
+- "robust": Robust standardization of numerical columns.
+- "z_score": Z-Score normalization of numerical columns.
+
+**Returns**:
+
+Returns a data frame with normalized or standardized numerical columns according to the specified method.
+
+```{r}
+custom_normalize.DataFrame <-
+function(df, method = "standardize") {
+  # Check if the input is a data frame
+  stopifnot(is.data.frame(df))
+  
+  # Separate numeric and non-numeric columns
+  numeric_columns <- sapply(df, is.numeric)
+  df_numeric <- df[, numeric_columns]
+  df_non_numeric <- df[, !numeric_columns]
+  
+  # Apply standardization/normalization method to numeric columns
+  if (method == "standardize") {
+    # Standardization (centering and scaling)
+    df_numeric <- scale(df_numeric)
+  }
+  else if (method == "min_max") {
+    # Min-Max Normalization
+    df_numeric <- apply(df_numeric, 2, function(x) (x - min(x)) / (max(x) - min(x)))
+  }
+  else if (method == "log_transform") {
+    # Log transformation
+    df_numeric <- log1p(df_numeric)
+  }
+  else if (method == "robust") {
+    # Robust standardization
+    df_numeric <- apply(df_numeric, 2, function(x) (x - median(x)) / IQR(x))
+  }
+  else if (method == "z_score") {
+    # Z-Score normalization
+    df_numeric <- apply(df_numeric, 2, function(x) (x - mean(x)) / sd(x))
+  }
+  
+  
+  # Combine numeric and non-numeric columns back into a single data frame
+  df <- cbind(df_non_numeric, df_numeric)
+  
+  # Return the processed table
+  return(df)
+}
+```
+
+</br>
+
+## generate_plot
+
+</br>
+
+This function is used to generate plots for a specific column in a data frame. Two types of plots are supported: distribution plot and boxplot.
+
+**Arguments**:
+
+- data: The data frame on which the plots should be generated.
+- column: The name of the column for which the plot should be generated.
+- plot_type: The type of plot to generate, defaults to "distribution". Supported types are "distribution" and "boxplot".
+
+**Details**:
+
+The function checks whether the column with the specified name exists in the data frame. Depending on the chosen plot_type, it generates either a distribution plot (density plot) or a boxplot for the specified column.
+
+**Returns**:
+
+The generated plot depending on the chosen plot_type.
+
+```{r}
+generate_plot.DataFrame <- function(data, column, plot_type = "distribution") {
+  # Check if the specified column exists in the data frame
+  if (!(column %in% names(data))) {
+    stop("Specified column not found in the data frame.")
+  }
+
+  # Generate either a distribution plot or a boxplot based on the plot_type
+  if (plot_type == "distribution") {
+    # Create a distribution plot for the specified column
+    plot <- plot(density(data[[column]]), main = paste("Distribution Plot for", column),
+                 xlab = column, col = "skyblue", lwd = 2)
+    polygon(density(data[[column]]), col = rgb(0.2, 0.5, 0.8, 0.5), border = NA)
+  } else if (plot_type == "boxplot") {
+    # Create a boxplot for the specified column
+    plot <- boxplot(data[[column]], main = paste("Boxplot for", column),
+                    xlab = column, col = "skyblue", border = "darkblue")
+  } else {
+    stop("Invalid plot_type. Supported types are 'distribution' and 'boxplot'.")
+  }
+
+  return(plot)
+}
+```
+
+</br>
+
+# Usage
+
+</br>
+
+In order to visualize how to use the package, the Housing Prices dataset was utilized (https://www.kaggle.com/datasets/yasserh/housing-prices-dataset).
+
+</br>
+
+## Importing package
+
+</br>
+
+```{r}
+library(devtools)
+install_github("mmarecik/custom_r_package/DataFrame")
+library(DataFrame)
+```
+
+</br>
+
+## Reading dataset
+
+</br>
+
+
+```{r,echo = FALSE}
+Housing <- read.csv("./Housing.csv")
+```
+
+
+```{r}
+head(Housing)
+```
+
+</br>
+
+## DataFrame
+
+</br>
+
+```{r}
+# set class to DataFrame
+house_data <- DataFrame(Housing)
+class(house_data)
+```
+
+</br>
+
+## astype
+
+</br>
+
+```{r}
+# convert column dtypes
+str(house_data)
+numericcol <- list("price", "area")
+factorcol <- list("bedrooms", "bathrooms", "basement", "hotwaterheating", "parking", "furnishingstatus", "prefarea")
+house_data <- astype.DataFrame(house_data, factor.cols=factorcol)
+str(house_data)
+```
+
+</br>
+
+## summary
+
+</br>
+
+```{r}
+summary.DataFrame(house_data)
+```
+
+</br>
+
+## encoding
+
+</br>
+
+```{r}
+# categorical columns encoding
+one_hot_house_data <- encoding.DataFrame(house_data, c("basement", "parking"), type = "one-hot", drop = "binary")
+ordinal_house_data <- encoding.DataFrame(house_data, c("basement"), type = "ordinal", drop = FALSE)
+
+head(one_hot_house_data)
+head(ordinal_house_data)
+```
+
+</br>
+
+## train_test_split
+
+</br>
+
+```{r}
+# train-test split
+train_test <- train_test_split.DataFrame(house_data, random.state = 32, test.size = 0.4)
+nrow(train_test$train); nrow(train_test$test)
+train <- train_test$train
+test <- train_test$test
+nrow(train[train$basement == 'yes', ]) / nrow(train)
+nrow(test[test$basement == 'yes', ]) / nrow(test)
+
+train_test <- train_test_split.DataFrame(house_data, test.size = 0.4, stratify = "basement")
+nrow(train_test$train); nrow(train_test$test)
+train <- train_test$train
+test <- train_test$test
+nrow(train[train$basement == 'yes', ]) / nrow(train)
+nrow(test[test$basement == 'yes', ]) / nrow(test)
+```
+
+</br>
+
+## handle_missing_values
+
+</br>
+
+```{r}
+set.seed(123)
+
+percent_missing <- 5
+num_missing_per_column <- ceiling((percent_missing / 100) * nrow(house_data))
+
+house_data_with_na <- house_data
+for (col in names(house_data)) {
+  missing_rows <- sample(1:nrow(house_data), num_missing_per_column, replace = FALSE)
+  house_data_with_na[missing_rows, col] <- NA
+}
+
+colSums(is.na(house_data_with_na))
+```
+
+**method = "drop"**
+
+Rows with missing data are removed for the specified columns only.
+
+```{r}
+result <- handle_missing_values.DataFrame(house_data_with_na, method = "drop", columns = "price")
+colSums(is.na(result))
+nrow(result)
+```
+
+**method = "zero"**
+
+Missing data are replaced with 0.
+
+```{r}
+result <- handle_missing_values.DataFrame(house_data_with_na, method = "zero", columns = "parking")
+table(house_data_with_na["parking"],useNA = "always")
+table(result["parking"],useNA = "always")
+```
+
+**method = "mean"**
+
+```{r}
+sample_data <- data.frame(
+  A = c(1, 2, NA, 4, 5),
+  B = c(NA, 2, 3, 4, 5)
+)
+
+handle_missing_values.DataFrame(sample_data, method = "mean", columns = c("A", "B"))
+```
+
+
+**method = "interpolate"**
+
+```{r}
+sample_data <- data.frame(
+  X = c(1, 2, NA, 4, 5),
+  Y = c(1, NA, 3, 4, 5)
+)
+
+handle_missing_values.DataFrame(sample_data, method = "interpolate", columns = c("X", "Y"))
+```
+
+</br>
+
+## custom_normalize
+
+</br>
+
+**Min-Max**
+
+```{r}
+head(custom_normalize.DataFrame(train, method="min_max"))
+```
+
+</br>
+
+**Z-score**
+
+```{r}
+head(custom_normalize.DataFrame(train, method="z_score"))
+```
+
+</br>
+
+## generate_plot
+
+</br>
+
+```{r, echo = FALSE}
+options(scipen=10)
+```
+
+
+```{r}
+GeneratePlot.DataFrame(house_data, column = "price", plot_type = "distribution")
+```
+
